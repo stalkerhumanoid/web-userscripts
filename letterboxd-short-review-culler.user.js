@@ -1,21 +1,22 @@
 // ==UserScript==
 // @name         Letterboxd Short Review Culler
 // @namespace    https://github.com/stalkerhumanoid
-// @version      2.0.1
+// @version      2.0.2
 // @author       @stalkerhumanoid
 // @license      MIT
 // @description  Hides short, low-effort reviews on Letterboxd (default: under 150 characters)
 // @homepageURL  https://github.com/stalkerhumanoid/web-userscripts
 // @supportURL   https://github.com/stalkerhumanoid/web-userscripts/issues
-// @downloadURL  https://raw.githubusercontent.com/stalkerhumanoid/web-userscripts/main/letterboxd-short-review-culler.user.js
-// @updateURL    https://raw.githubusercontent.com/stalkerhumanoid/web-userscripts/main/letterboxd-short-review-culler.user.js
-// @match        *://letterboxd.com/*
-// @match        *://*.letterboxd.com/*
+// @match        *://*.letterboxd.com/film/*
+// @exlcude      *://letterboxd.com/activity/*
+// @exlcude      *://letterboxd.com/*/film/*
 // @run-at       document-start
 // @noframes
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @downloadURL https://update.greasyfork.org/scripts/439029/Letterboxd%20Short%20Review%20Culler.user.js
+// @updateURL https://update.greasyfork.org/scripts/439029/Letterboxd%20Short%20Review%20Culler.meta.js
 // ==/UserScript==
 
 (() => {
@@ -25,16 +26,21 @@
     const MINIMUM_KEY = 'characterMinimum';
     const DEBUG_KEY = 'debug';
 
-    // Current Letterboxd markup first, pre-redesign names last. The old names are kept because the
-    // /film/<slug>/reviews/ and member /films/reviews/ pages could not be verified, and may still
-    // serve them.
-    //
-    // Note what is absent: .body-text on its own. It survived the redesign but is no longer
-    // review-specific — the same class wraps the film synopsis and the promo banners — so it is only
-    // ever reached via an entry, where those cannot match.
     const ENTRY_SELECTOR = '.js-production-viewing, .production-viewing, .film-detail';
     const WRAPPER_SELECTOR = '.js-listitem, .listitem';
     const BODY_SELECTOR = '.js-review-body, .film-detail-content .body-text';
+
+    // Reviews inside the popular/friends reviews block at the top of the film page are left alone
+    // Two selectors on purpose, because the two failure modes are complementary. The `js-popular*`
+    // class is Letterboxd's own JS hook and is stable against the section moving around the page,
+    // but could be renamed. `:nth-child(1)` survives a class rename, but only holds while the section
+    // stays the first child of its parent. Whichever one Letterboxd breaks, the other should catch
+    // it. The class match is deliberately a substring so a rename to e.g. `js-popular-reviews` or
+    // `js-popular-friend-reviews` both continue to match.
+    const EXEMPT_SELECTOR = [
+        'section.film-reviews[class*="js-popular"]',
+        'section.film-reviews:nth-child(1)',
+    ].join(', ');
 
     const HIDDEN_ATTR = 'data-lsrc-hidden';
 
@@ -70,10 +76,12 @@
 
     // Returns true if the entry ended up hidden.
     function cull(entry) {
+        // Skip exempt sections before we even measure.
+        if (entry.closest(EXEMPT_SELECTOR)) return false;
+
         const length = measure(entry);
 
-        // Fail open. An entry we cannot measure is one we do not understand — a rating-only diary
-        // entry, or markup that has changed under us — and hiding it would be a guess.
+        // Fail open.
         if (length === null) return false;
 
         // Hide the row wrapper rather than the entry itself: the wrapper carries the row's spacing and
